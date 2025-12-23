@@ -1,0 +1,14 @@
+{
+  "id": "com.apichlinski.ha.dashboard",
+  "version": "1.0.0",
+  "vendor": "apichlinski",
+  "type": "web",
+  "main": "index.html",
+  "title": "Home Assistant Dashboard",
+  "icon": "icon.png",
+  "largeIcon": "largeIcon.png",
+  "bgColor": "#000000",
+  "requiredPermissions": [
+    "network.access"
+  ]
+}

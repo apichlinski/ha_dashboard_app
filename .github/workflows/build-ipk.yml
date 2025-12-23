@@ -1,0 +1,75 @@
+name: Build webOS IPK with Auto-Versioning
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  release:
+    types: [ published ]
+
+jobs:
+  build-and-version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Needed for pushing version commit/tag
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for conventional commits detection
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Automated Version Bump
+        id: version-bump
+        uses: phips28/gh-action-bump-version@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          target-file: 'appinfo.json'  # Your appinfo.json location (adjust if in subfolder)
+          major-wording:  'BREAKING CHANGE,BREAKING CHANGES,major'
+          minor-wording:  'feat,feature'
+          patch-wording:  'fix,bugfix,chore,refactor'
+          rc-wording:     'PREVIEW,prerelease'
+
+      - name: Show new version
+        run: echo "New version is ${{ steps.version-bump.outputs.newTag }}"
+
+      - name: Install webOS CLI
+        run: npm install @webos-tools/cli
+
+      - name: Package into IPK (using version from appinfo.json)
+        run: npx ares-package .
+
+      - name: Rename IPK with version
+        id: rename-ipk
+        run: |
+          APP_ID=$(jq -r .id appinfo.json)
+          VERSION=$(jq -r .version appinfo.json)
+          OLD_IPK=$(ls *.ipk | head -n 1)
+          NEW_IPK="${APP_ID}_${VERSION}_all.ipk"
+          mv "$OLD_IPK" "$NEW_IPK"
+          echo "ipk_file=$NEW_IPK" >> $GITHUB_OUTPUT
+          echo "Versioned IPK: $NEW_IPK"
+
+      - name: Upload IPK as artifact (always)
+        uses: actions/upload-artifact@v4
+        with:
+          name: webos-ipk
+          path: ${{ steps.rename-ipk.outputs.ipk_file }}
+
+      - name: Upload to GitHub Release (only on tagged releases)
+        if: github.event_name == 'release'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ${{ steps.rename-ipk.outputs.ipk_file }}
+          asset_name: ${{ steps.rename-ipk.outputs.ipk_file }}
+          asset_content_type: application/octet-stream

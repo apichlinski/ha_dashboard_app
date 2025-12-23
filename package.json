@@ -1,0 +1,12 @@
+{
+  "name": "ha-dashboard-webos",
+  "version": "1.0.0",
+  "description": "Home Assistant Dashboard for LG webOS TV",
+  "scripts": {
+    "build": "echo 'No build needed' || true",
+    "package": "ares-package ."
+  },
+  "devDependencies": {
+    "@webos-tools/cli": "^3.2.1"
+  }
+}
