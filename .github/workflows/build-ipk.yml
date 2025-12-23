@@ -1,20 +1,24 @@
-name: Build webOS IPK with Auto-Versioning and Release
+name: Build webOS IPK with Auto-Versioning
 
 on:
   push:
     branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  release:
+    types: [ published ]
 
 jobs:
-  version-bump-and-release:
+  build-and-version:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # For tagging, committing, and releasing
+      contents: write  # Needed for pushing version commit/tag
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0  # Required for conventional commits detection
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -27,18 +31,19 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          target-file: 'appinfo.json'  # Adjust if in subfolder
-          major-wording: 'BREAKING CHANGE,BREAKING CHANGES,major'
-          minor-wording: 'feat,feature'
-          patch-wording: 'fix,bugfix,chore,refactor'
+          target-file: 'appinfo.json'  # Your appinfo.json location (adjust if in subfolder)
+          major-wording:  'BREAKING CHANGE,BREAKING CHANGES,major'
+          minor-wording:  'feat,feature'
+          patch-wording:  'fix,bugfix,chore,refactor'
+          rc-wording:     'PREVIEW,prerelease'
 
       - name: Show new version
-        run: echo "New version: ${{ steps.version-bump.outputs.newTag }}"
+        run: echo "New version is ${{ steps.version-bump.outputs.newTag }}"
 
       - name: Install webOS CLI
         run: npm install @webos-tools/cli
 
-      - name: Package into IPK
+      - name: Package into IPK (using version from appinfo.json)
         run: npx ares-package .
 
       - name: Rename IPK with version
@@ -50,12 +55,21 @@ jobs:
           NEW_IPK="${APP_ID}_${VERSION}_all.ipk"
           mv "$OLD_IPK" "$NEW_IPK"
           echo "ipk_file=$NEW_IPK" >> $GITHUB_OUTPUT
+          echo "Versioned IPK: $NEW_IPK"
 
-      - name: Create/Release and Upload IPK
-        uses: ncipollo/release-action@v1
+      - name: Upload IPK as artifact (always)
+        uses: actions/upload-artifact@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ steps.version-bump.outputs.newTag }}
-          artifacts: ${{ steps.rename-ipk.outputs.ipk_file }}
-          allowUpdates: true  # Updates existing release if tag already exists
-          generateReleaseNotes: true  # Optional: auto-generates notes from commits
+          name: webos-ipk
+          path: ${{ steps.rename-ipk.outputs.ipk_file }}
+
+      - name: Upload to GitHub Release (only on tagged releases)
+        if: github.event_name == 'release'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ${{ steps.rename-ipk.outputs.ipk_file }}
+          asset_name: ${{ steps.rename-ipk.outputs.ipk_file }}
+          asset_content_type: application/octet-stream  
